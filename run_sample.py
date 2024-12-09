@@ -2,10 +2,10 @@ import torch
 import argparse
 
 from load_model import load_model
-from transformers import GPT2TokenizerFast
+from evals import eval_perplexity
+from transformers import GPT2TokenizerFast, GPT2LMHeadModel
 import torch.nn.functional as F
 import sampling
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate some samples")
@@ -30,6 +30,7 @@ def main():
     for i in text_samples:
         print(i)
         print("=================================================")
+    eval_perplexity(samples, device)
 
 if __name__=="__main__":
     main()
