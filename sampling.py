@@ -109,34 +109,6 @@ class AnalyticPredictor(Predictor):
         probs = stag_score * self.graph.transp_transition(x, dsigma)
         return catsample.sample_categorical(probs)
 
-class ContrastivePredictor:
-    def __init__(self, graph_med, noise_med, graph_small, noise_small, alpha = 0.25):
-        self.graph_med = graph_med
-        self.noise_med = noise_med
-        self.graph_small = graph_small
-        self.noise_small = noise_small
-        self.alpha = alpha
-
-    def update_fn(self, score_fn_med, score_fn_small, x, t, step_size):
-        curr_sigma_med = self.noise_med(t)[0]
-        next_sigma_med = self.noise_med(t - step_size)[0]
-        dsigma_med = curr_sigma_med - next_sigma_med
-
-        curr_sigma_small = self.noise_small(t)[0]
-        next_sigma_small = self.noise_med(t - step_size)[0]
-        dsigma_small = curr_sigma_small - next_sigma_small
-
-        score_med = score_fn_med(x, curr_sigma_med)
-        stag_score_med = self.graph_med.staggered_score(score_med, dsigma_med)
-
-        score_small = score_fn_small(x, curr_sigma_small)
-        stag_score_small = self.graph_small.staggered_score(score_small, dsigma_small)
-
-        probs_med = stag_score_med * self.graph_med.transp_transition(x, dsigma_med)
-        probs_small = stag_score_small * self.graph_small.transp_transition(x, dsigma_small)
-
-        return catsample.sample_categorical_diff_delta(probs_med, probs_small, self.alpha)
-
     
 class Denoiser:
     def __init__(self, graph, noise):
@@ -156,13 +128,47 @@ class Denoiser:
         #return probs.argmax(dim=-1)
         return catsample.sample_categorical(probs)
 
-class ContrastiveDenoiser:
-    def __init__(self, graph_med, noise_med, graph_small, noise_small, alpha = 0.25):
+class ContrastivePredictor:
+    def __init__(self, graph_med, noise_med, graph_small, noise_small, alpha = 0.25, sampling_method = "diff_delta"):
         self.graph_med = graph_med
         self.noise_med = noise_med
         self.graph_small = graph_small
         self.noise_small = noise_small
         self.alpha = alpha
+        self.sampling_method = sampling_method
+
+    def update_fn(self, score_fn_med, score_fn_small, x, t, step_size):
+        curr_sigma_med = self.noise_med(t)[0]
+        next_sigma_med = self.noise_med(t - step_size)[0]
+        dsigma_med = curr_sigma_med - next_sigma_med
+
+        curr_sigma_small = self.noise_small(t)[0]
+        next_sigma_small = self.noise_med(t - step_size)[0]
+        dsigma_small = curr_sigma_small - next_sigma_small
+
+        score_med = score_fn_med(x, curr_sigma_med)
+        stag_score_med = self.graph_med.staggered_score(score_med, dsigma_med)
+
+        score_small = score_fn_small(x, curr_sigma_small)
+        stag_score_small = self.graph_small.staggered_score(score_small, dsigma_small)
+
+        probs_med = stag_score_med * self.graph_med.transp_transition(x, dsigma_med)
+        probs_small = stag_score_small * self.graph_small.transp_transition(x, dsigma_small)
+
+        if self.sampling_method == "diff_max":
+            return catsample.sample_categorical_diff_max(probs_med, probs_small, self.alpha)
+        return catsample.sample_categorical_diff_delta(probs_med, probs_small, self.alpha)
+
+
+
+class ContrastiveDenoiser:
+    def __init__(self, graph_med, noise_med, graph_small, noise_small, alpha = 0.25, sampling_method = "diff_delta"):
+        self.graph_med = graph_med
+        self.noise_med = noise_med
+        self.graph_small = graph_small
+        self.noise_small = noise_small
+        self.alpha = alpha
+        self.sampling_method = sampling_method
 
     def update_fn(self, score_fn_med, score_fn_small, x, t):
         sigma_med = self.noise_med(t)[0]
@@ -180,6 +186,9 @@ class ContrastiveDenoiser:
             probs_med = probs_med[..., :-1]
         if self.graph_small.absorb:
             probs_small = probs_small[..., :-1]
+
+        if self.sampling_method == "diff_max":
+            return catsample.sample_categorical_diff_max(probs_med, probs_small, self.alpha)
 
         return catsample.sample_categorical_diff_delta(probs_med, probs_small, self.alpha)
                        
@@ -200,11 +209,12 @@ def get_sampling_fn(config, graph, noise, batch_dims, eps, device):
 
 def get_contrastive_sampler(graph_med, graph_small, noise_med, noise_small, 
                             batch_dims, predictor, steps, denoise=True, eps=1e-5,
-                            device=torch.device('cpu'), proj_fun=lambda x: x, alpha = 0.25):
+                            device=torch.device('cpu'), proj_fun=lambda x: x, alpha = 0.25,
+                            sampling_method = "diff_delta"):
     med_predictor = get_predictor('analytic')(graph_med, noise_med)
-    predictor_combined = ContrastivePredictor(graph_med, noise_med, graph_small, noise_small, alpha = alpha)
+    predictor_combined = ContrastivePredictor(graph_med, noise_med, graph_small, noise_small, alpha = alpha, sampling_method = sampling_method)
     projector = proj_fun
-    denoiser_combined = ContrastiveDenoiser(graph_med, noise_med, graph_small, noise_small, alpha = alpha)
+    denoiser_combined = ContrastiveDenoiser(graph_med, noise_med, graph_small, noise_small, alpha = alpha, sampling_method = sampling_method)
 
     @torch.no_grad()
     def pc_sampler(model_med, model_small):

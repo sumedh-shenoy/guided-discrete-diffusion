@@ -33,11 +33,13 @@ def main():
         samples = sampling_fn(model)
 
         text_samples = tokenizer.batch_decode(samples)
-        """
-        for i in text_samples:
-            print(i)
+        
+        for index, text in enumerate(text_samples):
+            if index > 8:
+                break
+            print(text)
             print("=================================================")
-        """
+        
         perplexity = eval_perplexity(samples, device)
         baseline_perplexity += perplexity
     print(baseline_perplexity / num_batches)

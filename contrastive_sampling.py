@@ -31,7 +31,7 @@ def main():
         sampling_fn = sampling.get_contrastive_sampler(
             graph_med, graph_small, noise_med, noise_small,
             (args.batch_size, 256), 'analytic', args.steps, device=device,
-            alpha = 15
+            alpha = 0.2, sampling_method = "diff_max"
         )
         """
         sampling_fn = sampling.get_pc_sampler(

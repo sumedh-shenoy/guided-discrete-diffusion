@@ -27,6 +27,19 @@ def sample_categorical_diff(probs_med, probs_small, alpha):
     gumbel_norm = 1e-10 - (torch.rand_like(probs_med) + 1e-10).log()
     return (probs_new / gumbel_norm).argmax(dim=-1)
 
+def sample_categorical_diff_max(probs_med, probs_small, alpha):
+    return sample_categorical_diff(probs_med, probs_small, alpha)
+    
+    probs_delta = probs_med - 0.2 * probs_small
+    threshold = 0.5 * probs_med.max()
+    mask = (probs_med > threshold)
+    probs_delta = probs_delta * mask
+    return probs_delta.argmax(dim=-1)
+    """
+    gumbel_norm = 1e-10 - (torch.rand_like(probs_med) + 1e-10).log()
+    return (probs_new / gumbel_norm).argmax(dim=-1)
+    """
+
 def sample_categorical_logit_diff(probs_med, probs_small, alpha):
     med_logits = probs_med.log()
     print(probs_med.sum())
